@@ -1,5 +1,5 @@
 # BMHTTT
-# Install Oracle 
-python -m pip install oracledb 
-# run app
-python app.py
+## Install requirements
+python -m pip install -r requirement.tx
+## Run server
+flask run
