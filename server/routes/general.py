@@ -2,7 +2,7 @@ from server import app
 from flask import request, jsonify, session
 import os
 import oracledb
-
+from flask_cors import cross_origin
 dict_user = {}
 def start_pool(user, password):
     dsn = os.environ['ORACLE_DSN']
@@ -38,6 +38,7 @@ def get_all():
       return jsonify({'all_users': users})
    return {}
 @app.route('/login', methods=["GET", "POST"])
+@cross_origin(supports_credentials=True)
 def login():
    if request.method == 'POST':
       username = request.form['username']
@@ -78,6 +79,7 @@ def getme(request):
       return jsonify({'error': 'Not Role', 'status': 401})
    
 @app.route('/api/applications', methods = ['GET', 'POST', 'PUT', 'DELETE'])
+@cross_origin(supports_credentials=True)
 def api_applications():   
    current_user = dict_user[session['username']]
    cur = current_user.connect.cursor()
