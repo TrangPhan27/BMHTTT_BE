@@ -78,44 +78,41 @@ def getme(request):
       return jsonify({'error': 'Not Role', 'status': 401})
    
 @app.route('/api/applications', methods = ['GET', 'POST', 'PUT', 'DELETE'])
-def api_applications(request, id):
-   role = request.headers.get('role')
-   idUser = request.headers.get('id')
-   if(not (idUser and role)):
-         return jsonify({'message': 'Bad request', 'status': 400, 'data': 'NULL'})
+def api_applications():   
+   current_user = dict_user[session['username']]
+   cur = current_user.connect.cursor()
+   if request.method == 'GET':
+      applications = []
+      if cur is not None:
+         cur.execute("SELECT * FROM bankadm.applications")
+         columns = [col[0] for col in cur.description]
+         cur.rowfactory = lambda *args: dict(zip(columns, args))
+         data = cur.fetchall()
+         applications = data
+      return jsonify(applications)
       
-   if(request.method == 'GET'):
-      if(id):
-         if(role in ['customer']):
-            applications = cur.execute("SELECT * FROM APPLICATIONS WHERE created_by = '%s' AND id = '%s", idUser, id)
-            return jsonify({'message': 'OK', 'status': 200, 'data': applications})
-         elif (role in ['CM', 'CA', 'CS']):
-            applications = cur.execute("SELECT * FROM APPLICATIONS WHERE id = '%s", id)
-            return jsonify({'message': 'OK', 'status': 200, 'data': applications})
-         else:
-            return jsonify({'error': 'Not Role', 'status': 401})
-      else :
-         if(role in ['customer']):
-            applications = cur.execute("SELECT * FROM APPLICATIONS WHERE created_by = '%s'", idUser)
-            return jsonify({'message': 'OK', 'status': 200, 'data': applications})
-         elif (role in ['CM', 'CA', 'CS']):
-            applications = cur.execute("SELECT * FROM APPLICATIONS")
-            return jsonify({'message': 'OK', 'status': 200, 'data': applications})
-         else:
-            return jsonify({'error': 'Not Role', 'status': 401})
-   
-   if(request.method == 'POST'):
-      if(role in ['customer', 'CS']):
-         data = request.POST.get
-         return jsonify({'message': 'OK', 'status': 200, 'data': 'NULL'})
-      else :
-         return jsonify({'error': 'Not Role', 'status': 401})
-   
-   if(request.method == 'PUT'):
-      if(id):
-         data = request.POST.get
-      else:
-         return jsonify({'message': 'Bad request', 'status': 400, 'data': 'NULL'})
-         
+   if request.method == 'POST':
+      form = request.form
+      if cur is not None:
+         try:
+            cur.execute(f"INSERT INTO BANKADM.APPLICATIONS"
+                     f"VALUES({form['acc_type']}, {form['climit']}, {form['c_name']},"
+                     f"{form['c_income']}, {form['c_cccd']}, {form['c_phone_num']}, {form['c_addr']}, {form['c_email']}, 0, NULL, NULL, NULL)")
+            return jsonify({'message': 'OK', 'status': 200})
+         except:
+            return jsonify({'error': 'ERROR', 'status': 404})
+
+@app.route('/api/analyze', methods=['GET', 'POST'])
+def analyze():
+
+   current_user = dict_user[session['username']]
+   cur = current_user.connect.cursor()
+
+   if request.method == 'GET':
+      pass
+      # try:
+         # for cur.execute(f"SELECT * FROM BANKADM.ANALYZE;")
+   if request.method == 'POST':
+      pass
    
       
