@@ -1,36 +1,62 @@
-from server import cursor as cur
 from server import app
-from flask import request, jsonify
+from flask import request, jsonify, session
+from server import pool
+import os
+import oracledb
+
+dict_user = {}
+def start_pool(user, password):
+    dsn = os.environ['ORACLE_DSN']
+    print(f"{user}/{password}@{dsn}")
+    pool_min = 4
+    pool_max = 4
+    pool_inc = 0
+
+    pool = oracledb.create_pool(user=user,
+                                   password=password,
+                                   dsn=dsn,
+                                   min=pool_min,
+                                   max=pool_max,
+                                   increment=pool_inc)
+    return pool
+class SessionUser:
+   def __init__(self, username, password, dsn) -> None:
+      self.username = username
+      self.password = password
+      self.dsn = dsn
+      self.connect = oracledb.connect(dsn=dsn, user=username, password=password)
 
 @app.route('/api/getall')
 def get_all():
+   current_username = session['username']
+   current_user = dict_user[current_username]
    users = []
-   for row in cur.execute("SELECT * FROM users"):
-      user = {'uname': row[2], 'email': row[3] }
-      print(user)
-      users.append(user)
-   return jsonify({'all_users': users})
-@app.route('/api/login', methods = ["GET"])
-def login(request, id):
-   username = request.GET.get('username', None)
-   password = request.GET.get('password', None)
-   if(username and password):
-      userData = cur.execute("SELECT * FROM users WHERE uname = '%s' AND pw = '%s", username, password)
-      print(userData)
-      if(userData[0]):
-         return jsonify({'message': 'OK', 'status': 200, 'data': userData[0]})
-      else:
-         return jsonify({'error': 'Not Found', 'status': 404, 'data': 'NULL'})
-   else :
-      return jsonify({'error': 'Bad request', 'status': 400})
-   
+   cur = current_user.connect.cursor()
+   if cur is not None:
+      for row in cur.execute("SELECT * FROM bankadm.users"):
+         user = {'uname': row[2], 'email': row[3] }
+         users.append(user)
+      return jsonify({'all_users': users})
+   return {}
+@app.route('/login', methods = ["GET", "POST"])
+def login():
+   if request.method == 'POST':
+      username = request.form['username']
+      password =request.form['password']
+      dsn = os.environ['ORACLE_DSN']
+      user = SessionUser(username, password, dsn)
+      try:
+         dict_user[username] = user
+         session['username'] = username
+         return jsonify({'message': 'OK', 'status': 200})
+      except Exception as e:
+         return jsonify({'message': 'ERROR', 'status': 401})
 @app.route('/api/me', methods=['GET'])
 def getme(request):
    id = request.headers.get('id')
    role = request.headers.get('role')
    if(not (id and role)):
          return jsonify({'message': 'Bad request', 'status': 400, 'data': 'NULL'})
-      
    if role == 'customer':
       userData = cur.execute("SELECT * FROM users WHERE uuid = '%s'", id)
       customerData = cur.execute("SELECT * FROM CUSTOMERS WHERE uuid = '%s'", id)
