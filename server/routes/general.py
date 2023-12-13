@@ -1,6 +1,5 @@
 from server import app
 from flask import request, jsonify, session
-from server import pool
 import os
 import oracledb
 
@@ -38,7 +37,7 @@ def get_all():
          users.append(user)
       return jsonify({'all_users': users})
    return {}
-@app.route('/login', methods = ["GET", "POST"])
+@app.route('/login', methods=["GET", "POST"])
 def login():
    if request.method == 'POST':
       username = request.form['username']
@@ -51,6 +50,10 @@ def login():
          return jsonify({'message': 'OK', 'status': 200})
       except Exception as e:
          return jsonify({'message': 'ERROR', 'status': 401})
+@app.route('/logout', methods=['GET'])
+def logout():
+   session.clear()
+   dict_user.pop()
 @app.route('/api/me', methods=['GET'])
 def getme(request):
    id = request.headers.get('id')
