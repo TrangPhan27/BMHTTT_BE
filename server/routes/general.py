@@ -1,9 +1,17 @@
 from server import app
-from flask import request, jsonify, session
+from functools import wraps
+from flask import request, jsonify, session, redirect, url_for
 import os
 import oracledb
 from flask_cors import cross_origin
-dict_user = {}
+def login_required(f):
+   @wraps(f)
+   def decorated_function(*args, **kwargs):
+      if 'username' not in session:
+         return jsonify({'message': 'Unauthorized', 'status': 401}), 401
+      return f(*args, **kwargs)
+   return decorated_function
+
 def start_pool(user, password):
     dsn = os.environ['ORACLE_DSN']
     print(f"{user}/{password}@{dsn}")
@@ -23,7 +31,8 @@ class SessionUser:
       self.username = username
       self.password = password
       self.dsn = dsn
-      self.connect = oracledb.connect(dsn=dsn, user=username, password=password)
+      self.connect: oracledb.Connection = oracledb.connect(dsn=dsn, user=username, password=password)
+dict_user: dict[str, SessionUser] = {}
 
 @app.route('/api/getall')
 def get_all():
@@ -37,49 +46,106 @@ def get_all():
          users.append(user)
       return jsonify({'all_users': users})
    return {}
+
 @app.route('/login', methods=["GET", "POST"])
 @cross_origin(supports_credentials=True)
 def login():
-   if request.method == 'POST':
+   # if request.method == 'POST':
+   #    username = request.form['username']
+   #    password =request.form['password']
+   #    if username == 'bankca' and password == '@Aa12345678':
+   #       user = SessionUser(username, password, os.environ['ORACLE_DSN'])
+   #       if username in dict_user.keys():
+   #          print("A user have been login")
+   #          return jsonify({'message': 'Already login', 'status': 403})
+   #       session['username'] = username
+   #       dict_user[username] = user
+   #       user.connect.close()
+   #       print(dict_user)
+   #       return jsonify({'message': 'OK', 'status': 200})
       username = request.form['username']
       password =request.form['password']
       dsn = os.environ['ORACLE_DSN']
-      user = SessionUser(username, password, dsn)
+      # user has been login
+      print(session.keys())
+      if 'username' in session.keys():
+         print("have been login")
+         return jsonify({'message': 'Already login', 'status': 403})
+      print(dict_user)
+      if username in dict_user.keys():
+         return jsonify({'message': 'Another device', 'status': 403})
       try:
-         dict_user[username] = user
-         session['username'] = username
-         return jsonify({'message': 'OK', 'status': 200})
-      except Exception as e:
-         return jsonify({'message': 'ERROR', 'status': 401})
+         oracledb.connect(dsn=dsn, user=username, password=password).close()
+      except oracledb.DatabaseError as e:
+         error, = e.args
+         if error.code == 1017:
+            return jsonify({'message': 'Invalid username or password', 'status': 401})        
+         if error.code == 28000:
+            return jsonify({'message': 'Account locked(>5 times)', 'status': 401})
+      user = SessionUser(username, password, dsn)
+      session['username'] = username
+      dict_user[username] = user
+      print(session.accessed)
+      return jsonify({'message': 'OK', 'status': 200})
+   
 @app.route('/logout', methods=['GET'])
+@login_required
 def logout():
+   username = session['username']
    session.clear()
-   dict_user.pop()
+   if username not in dict_user.keys():
+      return jsonify({'message': 'OK', 'status': 200})
+   user = dict_user[username]
+   try:
+      user.connect.close()
+   except:
+      pass
+   dict_user.pop(username)
+   return jsonify({'message': 'OK', 'status': 200})
+   # print(session.accessed)
+   # if not session.accessed:
+   #    return jsonify({'message': 'ERROR', 'status': 401})
+   
+   # print(dict_user)
+
 @app.route('/api/me', methods=['GET'])
-def getme(request):
-   id = request.headers.get('id')
-   role = request.headers.get('role')
-   if(not (id and role)):
-         return jsonify({'message': 'Bad request', 'status': 400, 'data': 'NULL'})
-   if role == 'customer':
-      userData = cur.execute("SELECT * FROM users WHERE uuid = '%s'", id)
-      customerData = cur.execute("SELECT * FROM CUSTOMERS WHERE uuid = '%s'", id)
-      if(userData[0] and customerData[0]):
-         return jsonify({'message': 'OK', 'status': 200, 'data': userData[0] + customerData[0]})
-      else :
-         return jsonify({'error': 'Not Found', 'status': 404, 'data': 'NULL'})
-   elif role in ['CM', 'CA', 'CS']:
-      userData = cur.execute("SELECT * FROM users WHERE uuid = '%s'", id)
-      staffData = cur.execute("SELECT * FROM STAFFS WHERE uuid = '%s'", id)
-      if(userData[0] and staffData[0]):
-         return jsonify({'message': 'OK', 'status': 200, 'data': userData[0] + staffData[0]})
-      else :
-         return jsonify({'error': 'Not Found', 'status': 404, 'data': 'NULL'})
+@login_required
+def getme():
+   current_user = dict_user[session['username']]
+   cur = current_user.connect.cursor()
+   isCustomer = cur.execute("SELECT sys_context('SYS_SESSION_ROLES','CUSTOMER_ROLE') FROM dual").fetchone()[0]
+   user = cur.execute("SELECT * FROM bankadm.users").fetchone()
+   if isCustomer == 'TRUE':
+      userData = cur.execute("SELECT * FROM bankadm.customers WHERE uuid = sys_context('users_ctx', 'uuid')").fetchone()
    else:
-      return jsonify({'error': 'Not Role', 'status': 401})
+      userData = cur.execute("SELECT * FROM bankadm.staffs WHERE uuid = sys_context('users_ctx', 'uuid')").fetchone()
+   # print(staff)
+   return jsonify({'message': 'OK', 'status': 200, 'data': user[1:] + userData[1:]})
+
+   # if customer[0]:
+   #    return jsonify({'message': 'OK', 'status': 200, 'data': customer[0]})
+   # elif staff[0]:
+   #    return jsonify({'message': 'OK', 'status': 200, 'data': staff[0]})
+   # else:
+   #    return jsonify({'error': 'Not Found', 'status': 404, 'data': 'NULL'})
+   # if role == 'customer':
+   #    if(userData[0] and customerData[0]):
+   #       return jsonify({'message': 'OK', 'status': 200, 'data': userData[0] + customerData[0]})
+   #    else :
+   #       return jsonify({'error': 'Not Found', 'status': 404, 'data': 'NULL'})
+   # elif role in ['CM', 'CA', 'CS']:
+   #    userData = cur.execute("SELECT * FROM users WHERE uuid = '%s'", id)
+   #    staffData = cur.execute("SELECT * FROM STAFFS WHERE uuid = '%s'", id)
+   #    if(userData[0] and staffData[0]):
+   #       return jsonify({'message': 'OK', 'status': 200, 'data': userData[0] + staffData[0]})
+   #    else :
+   #       return jsonify({'error': 'Not Found', 'status': 404, 'data': 'NULL'})
+   # else:
+   #    return jsonify({'error': 'Not Role', 'status': 401})
    
 @app.route('/api/applications', methods = ['GET', 'POST', 'PUT', 'DELETE'])
 @cross_origin(supports_credentials=True)
+@login_required
 def api_applications():   
    current_user = dict_user[session['username']]
    cur = current_user.connect.cursor()
@@ -89,9 +155,14 @@ def api_applications():
          cur.execute("SELECT * FROM bankadm.applications")
          columns = [col[0] for col in cur.description]
          cur.rowfactory = lambda *args: dict(zip(columns, args))
-         data = cur.fetchall()
+         data = cur.execute("SELECT * FROM bankadm.applications").fetchall()
+         for i in data:
+            i.pop("CREATED_BY")
          applications = data
-      return jsonify(applications)
+         print(applications)
+      return jsonify({'message': 'OK', 'status': 200, 'data': applications})
+      # return applications
+      # return jsonify(applications)
       
    if request.method == 'POST':
       form = request.form
@@ -105,6 +176,7 @@ def api_applications():
             return jsonify({'error': 'ERROR', 'status': 404})
 
 @app.route('/api/analyze', methods=['GET', 'POST'])
+@login_required
 def analyze():
 
    current_user = dict_user[session['username']]
@@ -116,5 +188,6 @@ def analyze():
          # for cur.execute(f"SELECT * FROM BANKADM.ANALYZE;")
    if request.method == 'POST':
       pass
+
    
       
