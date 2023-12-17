@@ -183,7 +183,11 @@ def analyze():
    cur = current_user.connect.cursor()
 
    if request.method == 'GET':
-      pass
+      cur.execute(f"SELECT * FROM BANKADM.ANALYZE")
+      columns = [col[0] for col in cur.description]
+      cur.rowfactory = lambda *args: dict(zip(columns, args))
+      data = cur.execute(f"SELECT * FROM BANKADM.ANALYZE").fetchall()
+      return jsonify({'message': 'OK', 'status': 200, 'data': data})
       # try:
          # for cur.execute(f"SELECT * FROM BANKADM.ANALYZE;")
    if request.method == 'POST':
