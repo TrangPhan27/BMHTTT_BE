@@ -166,14 +166,37 @@ def api_applications():
       
    if request.method == 'POST':
       form = request.form
+      
       if cur is not None:
+         excute_f = """INSERT INTO BANKADM.APPLICATIONS 
+                     (acc_type ,climit , c_name , c_income , c_cccd , c_phone_num , c_addr , c_email)
+                     VALUES ('%s', %s, '%s', %s, '%s', %s, '%s', '%s')
+                     """
+         # print(form)
+         excute_str = excute_f % (form['acc_type'], form['climit'], 
+                                  form['c_name'], form['c_income'], 
+                                  form['c_cccd'], form['c_phone_num'], 
+                                  form['c_addr'], form['c_email'])
          try:
-            cur.execute(f"INSERT INTO BANKADM.APPLICATIONS"
-                     f"VALUES({form['acc_type']}, {form['climit']}, {form['c_name']},"
-                     f"{form['c_income']}, {form['c_cccd']}, {form['c_phone_num']}, {form['c_addr']}, {form['c_email']}, 0, NULL, NULL, NULL)")
+            cur.execute(excute_str)
+            current_user.connect.commit()
             return jsonify({'message': 'OK', 'status': 200})
          except:
             return jsonify({'error': 'ERROR', 'status': 404})
+   if request.method == 'DELETE':
+      isCM = cur.execute("SELECT sys_context('SYS_SESSION_ROLES','CREDIT_MANAGER_ROLE') FROM dual").fetchone()[0]
+      if isCM == 'TRUE':
+         form = request.form
+         if cur is not None:
+            excute_f = """DELETE FROM BANKADM.APPLICATIONS WHERE id = %s"""
+            excute_str = excute_f % (form['id'])
+            try:
+               cur.execute(excute_str)
+               current_user.connect.commit()
+               return jsonify({'message': 'OK', 'status': 200})
+            except:
+               return jsonify({'error': 'ERROR', 'status': 404})
+         # return jsonify({'message': 'OK', 'status': 200})
 
 @app.route('/api/analyze', methods=['GET', 'POST'])
 @login_required
